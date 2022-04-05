@@ -394,7 +394,7 @@ class KATYUSHA(Algorithm):
                 # If the strong convexity constant is known then use values provided by theory
                 self.strong_convexity = strong_convexity
                 # this self.L might need to be self.f.L, or something like that
-                self.tau1 = np.min([0.5, np.sqrt(cs self.inner_loop_length*self.strong_convexity/3./self.L)]) # 
+                self.tau1 = np.min([0.5, np.sqrt(self.inner_loop_length*self.strong_convexity/3./self.L)]) # 
                 self.alpha = 1./3./self.tau1 /self.L
                 self.weights = np.array([(1.0+self.tau1*self.alpha) ** k for k in range(self.inner_loop_length)])
                 self.weight_normalisation = 1.0 / self.weights.sum()
