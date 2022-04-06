@@ -444,15 +444,16 @@ class SVRGFunction(SubsetSumFunction):
         precond: function taking into input an integer (subset_num) and a DataContainer and outputting a DataContainer
         serves as diagonal preconditioner
         default None
-    - (optional)
         update_frequency: an integer parameter that defines the length of the inner loop (the number of inner loop iterations)
         before the full gradient estimator and the snapshot image are (on average) updated
         passing update_frequency=np.inf indicates that we we never want to update the full gradient and the snapshot
         suggested to set as 2 for convex objectives, and 5 otherwise
         default 2
+        store_subset_gradients: store gradients of subsets at the start of each epoch rather than calculating at every sub-iteration
+        default False
     '''
 
-    def __init__(self, functions, precond=None, update_frequency = 2, **kwargs):
+    def __init__(self, functions, precond=None, update_frequency = 2, store_subset_gradients=False, **kwargs):
 
         super(SVRGFunction, self).__init__(functions)
 
@@ -460,6 +461,9 @@ class SVRGFunction(SubsetSumFunction):
     
         self.precond = precond
         self.update_frequency = update_frequency
+        
+        # option to save subset gradients rather than recalcing each sub-iteration
+        self.store_subset_gradients = store_subset_gradients
 
         # initialise the internal iteration counter. Used to check when to update the full gradient
         self.iter = 0
@@ -513,9 +517,12 @@ class SVRGFunction(SubsetSumFunction):
             # Update the number of (statistical) passes over the entire data until this iteration 
             self.data_passes.append(self.data_passes[-1]+1./self.num_subsets)
 
-            # Compute difference between current subset function gradient at current iterate (tmp1) and at snapshot, store in tmp2
+            # Compute difference between current subset function gradient at current iterate (tmp1) and at snapshot, store in tmp2a
             # tmp2 = gradient F_{subset_num} (x) - gradient F_{subset_num} (snapshot)
-            self.tmp1.axpby(1., -1., self.functions[self.subset_num].gradient(self.snapshot), out=self.tmp2) 
+            if self.store_subset_gradients is True:
+                self.tmp1.axpby(1., -1., self.subset_gradients[self.subset_num], out=self.tmp2)
+            else:
+                self.tmp1.axpby(1., -1., self.functions[self.subset_num].gradient(self.snapshot), out=self.tmp2) 
 
         # Compute the output: tmp2 + full_grad
         if out is None:
@@ -530,6 +537,10 @@ class SVRGFunction(SubsetSumFunction):
                 ret.multiply(self.precond(self.subset_num,x),out=ret)
             else:
                 out.multiply(self.precond(self.subset_num,x),out=out)
+                
+        if self.store_subset_gradients is True:
+            # Update subset gradients in memory: store the computed gradient F_{subset_num} (x) in self.subset_gradients[self.subset_num]
+            self.subset_gradients[self.subset_num].fill(self.tmp1)
 
         if out is None:
             return ret
@@ -543,6 +554,10 @@ class SVRGFunction(SubsetSumFunction):
         self.full_gradient = x * 0.0
         self.tmp2 = x * 0.0
         self.tmp1 = x * 0.0
+        
+        # Store subset gradients
+        if self.store_subset_gradients is True:
+            self.subset_gradients = [ x * 0.0 for _ in range(self.num_subsets)]
 
         # Initialise the gradient and the snapshot
         self.memory_update(x)        
@@ -585,7 +600,9 @@ class LSVRGFunction(SVRGFunction):
         before the full gradient estimator and the snapshot image are (on average) updated
         passing update_frequency=np.inf indicates that we we never want to update the full gradient and the snapshot
         suggested to set as 2 for convex objectives, and 5 otherwise
-        default 2       
+        default 2     
+        store_subset_gradients: store gradients of subsets at the start of each epoch rather than calculating at every sub-iteration
+        default False
     '''
 
     def __init__(self, functions, precond=None, update_frequency = 2, **kwargs):
@@ -648,7 +665,10 @@ class LSVRGFunction(SVRGFunction):
 
             # Compute difference between current subset function gradient at current iterate (tmp1) and at snapshot, store in tmp2
             # tmp2 = gradient F_{subset_num} (x) - gradient F_{subset_num} (snapshot)
-            self.tmp1.axpby(1., -1., self.functions[self.subset_num].gradient(self.snapshot), out=self.tmp2) 
+            if self.store_subset_gradients is True:
+                self.tmp1.axpby(1., -1., self.subset_gradients[self.subset_num], out=self.tmp2)
+            else:
+                self.tmp1.axpby(1., -1., self.functions[self.subset_num].gradient(self.snapshot), out=self.tmp2) 
 
         # Compute the output: tmp2 + full_grad
         if out is None:
@@ -663,6 +683,10 @@ class LSVRGFunction(SVRGFunction):
                 ret.multiply(self.precond(self.subset_num,x),out=ret)
             else:
                 out.multiply(self.precond(self.subset_num,x),out=out)
+                
+        if self.store_subset_gradients is True:
+            # Update subset gradients in memory: store the computed gradient F_{subset_num} (x) in self.subset_gradients[self.subset_num]
+            self.subset_gradients[self.subset_num].fill(self.tmp1)
 
         if out is None:
             return ret
