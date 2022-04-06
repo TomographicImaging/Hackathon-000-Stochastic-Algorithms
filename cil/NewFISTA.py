@@ -17,6 +17,7 @@
 
 from cil.optimisation.algorithms import Algorithm
 import numpy
+import numpy as np
 import warnings
 from numbers import Number
 
@@ -144,17 +145,18 @@ class FISTA(Algorithm):
         if kwargs.get('check_convergence_criterion', True):
             self._check_convergence_criterion()
 
-        print("{} setting up".format(self.__class__.__name__, ))
+        print("{} with {} setting up".format(self.__class__.__name__, self.f.__class__.__name__))
 
-        self.y = initial.copy()
-        self.x_old = initial.copy()
-        self.x = initial.copy()
-        self.u = initial.copy()
+        # Initialise iterates, the gradient estimator, and the temporary variables
+        self.x_old = initial.clone()
+        self.x = initial.clone()
 
-        self.t = 1
+        self.gradient_estimator = self.x * 0.0
+        self.tmp2 = self.x * 0.0
+        self.tmp1 = self.x * 0.0
+
         self.configured = True
-
-        print("{} configured".format(self.__class__.__name__, ))
+        print("{} with {} configured".format(self.__class__.__name__, self.f.__class__.__name__))
 
 
     def update(self):
@@ -313,10 +315,10 @@ class AdaptiveMomentumISTA(Algorithm):
 
         self.f = f
         self.g = g
-        self.x = initial.copy()
-        self.grad_x = initial.copy()
-        self.y = initial.copy()
-        self.z = initial.copy()
+        self.x = initial.clone()
+        self.grad_x = initial.clone()
+        self.y = initial.clone()
+        self.z = initial.clone()
         self.step_size = step_size
         self.momentum = momentum
         self.configured = True
@@ -466,9 +468,9 @@ class KATYUSHA(Algorithm):
         self.z = initial.clone()
         self.y = initial.clone()
 
-        self.snapshot = initial.clone() # initial full gradient should be computed at this
+        # self.snapshot = initial.clone() # initial full gradient should be computed at this # remove - should be done and stored by svrg
         self.snapshot_running_estimator = self.x * 0.0
-
+        self.f.memory_init(initial)
         self.tmp1 = self.x * 0.0
 
         self.update_step_size = False        
@@ -501,9 +503,11 @@ class KATYUSHA(Algorithm):
 
         '''Single iteration'''
         if self.iteration % self.inner_loop_length == 0 and self.iteration != 0:
-        # update snapshot, the gradient at snapshot and reset the running snapshot
-            self.snapshot = self.weight_normalisation * self.snapshot_running_estimator
-            self.f.memory_update(self.snapshot)
+            # update snapshot, the gradient at snapshot and reset the running snapshot
+            # self.snapshot = self.snapshot_running_estimator.multiply(self.weight_normalisation) 
+            # self.weight_normalisation * self.snapshot_running_estimator # is this some multiply with an out?
+            self.f.memory_update(self.snapshot_running_estimator.multiply(self.weight_normalisation))
+            # self.f.memory_update(self.snapshot)
 
             # in the non-strongly convex case tau1 and alpha are changed with respect to outer loop iterations
             if self.strong_convexity is None:
@@ -511,26 +515,41 @@ class KATYUSHA(Algorithm):
                 self.alpha = 1.0/3./self.tau1/self.L 
             self.snapshot_running_estimator = self.x * 0.0
         else:
-            self.x = self.tau1 * self.z + self.tau2 * self.snapshot + (1-self.tau1-self.tau2) * self.y
+            #compute x = tau1*z + tau2*snapshot +  (1-tau1-tau2)*y
+            self.z.sapyb(self.tau1, self.f.snapshot, self.tau2, out = self.x)
+            self.x.sapyb(1., self.y, 1-self.tau1-self.tau2, out = self.x)
+            # self.x = self.tau1 * self.z + self.tau2 * self.f.snapshot + (1-self.tau1-self.tau2) * self.y
             # Compute the gradient direction with svrg
             self.f.gradient(self.x, out = self.tmp1)
 
             if self.option == 'first':
-                self.z = self.g.proximal(self.z - self.alpha * self.tmp1, self.alpha)
-                self.y = self.g.proximal(self.x - 1./3./self.L * self.tmp1, 1./3./self.L)
+                # compute z - alpha*tmp1, where tmp1 = grad f(x)
+                self.z.sapyb(1., self.tmp1, -self.alpha, out = self.z)              
+                self.z = self.g.proximal(self.z, self.alpha)
+                # compute x - 1/3/L * tmp1
+                self.x.sapyb(1., self.tmp1, -1./3./self.L, out = self.tmp1)
+                self.y = self.g.proximal(self.tmp1, 1./3./self.L)
+                # self.y = self.g.proximal(self.x - 1./3./self.L * self.tmp1, 1./3./self.L)
             else: # if using the second option
-                # temporarily store the old z. should this be named tmp2?
-                self.z_old = self.z.clone()
-
-                self.z = self.g.proximal(self.z - self.alpha * self.tmp1, self.alpha)
-                self.y = self.x + self.tau_1 * (self.z - self.z_old)
+                # temporarily store the current z into a dummy variable 
+                self.z_tmp = self.z.clone()
+                
+                # compute z - alpha*tmp1, where tmp1 = grad f(x)
+                self.z.sapyb(1., self.tmp1, -self.alpha, out = self.z)
+                # compute proximal at z
+                self.z = self.g.proximal(self.z, self.alpha)
+                # self.z = self.g.proximal(self.z - self.alpha * self.tmp1, self.alpha)
+                # Computing x + tau1 * (z-z_tmp)
+                self.x.sapyb(1., self.z.subtract(self.z_tmp), self.tau1, out = self.y)
+                # self.y = self.x + self.tau1 * (self.z - self.z_tmp)
             
             # instead of storing the num_inner_iterations values of y (needed to update the snapshot)
             # we compute a running estimator that is averaged out when the full gradient is updated,
             # giving the new snapshot. 
             # Multiply the current self.y, with a weight corresponding to the iteration of the inner loop
             # and add to the running estimator
-            self.snapshot_running_estimator += self.weights[self.iteration % self.inner_loop_length] * self.y
+            self.snapshot_running_estimator.sapyb(1., self.y, self.weights[self.iteration % self.inner_loop_length], out = self.snapshot_running_estimator) 
+            # self.snapshot_running_estimator += self.weights[self.iteration % self.inner_loop_length] * self.y
 
 
 
@@ -557,9 +576,7 @@ class SARAH(Algorithm):
     .. math::
 
         \begin{cases}
-            x_{k+1} = \mathrm{prox}_{\alpha g}(x_{k} - \alpha\nabla f(x_{k}))\\
-            t_{k+1} = \frac{1+\sqrt{1+ 4t_{k}^{2}}}{2}\\
-            y_{k+1} = x_{k} + \frac{t_{k}-1}{t_{k-1}}(x_{k} - x_{k-1})
+            
         \end{cases}
 
     It is used to solve
@@ -670,19 +687,18 @@ class SARAH(Algorithm):
         r"""Performs a single iteration of SARAH
 
         .. math::
-
+            # TODO: change maths
             \begin{cases}
-                x_{k+1} = \mathrm{prox}_{\alpha g}(x_{k} - \alpha\nabla f(x_{k}))\\
-                t_{k+1} = \frac{1+\sqrt{1+ 4t_{k}^{2}}}{2}\\
-                y_{k+1} = x_{k} + \frac{t_{k}-1}{t_{k-1}}(x_{k} - x_{k-1})
+
             \end{cases}
 
         """
 
         self.gradient(self.x, out=self.gradient_estimator)
         self.x_old = self.x.clone()
-
-        self.x.axpby(1., -self.step_size, self.gradient_estimator, out = self.x)
+        
+        self.x.sapyb(1., self.gradient_estimator, -self.step_size, out = self.x)
+        # self.x.axpby(1., -self.step_size, self.gradient_estimator, out = self.x)
         self.x = self.g.proximal(self.x, self.step_size) # not sure if this makes sense
 
     def gradient(self, x, out = None):            
@@ -703,13 +719,16 @@ class SARAH(Algorithm):
 
             # Compute difference between current subset function gradient at current iterate (tmp1) and at the previous iterate, store in tmp2
             # tmp2 = gradient F_{subset_num} (x) - gradient F_{subset_num} (x_old)
-            self.tmp1.axpby(1., -1., self.f.functions[self.subset_num].gradient(self.x_old), out=self.tmp2) 
+            self.tmp1.sapyb(1., self.f.functions[self.subset_num].gradient(self.x_old), -1., out=self.tmp2)
+            # self.tmp1.axpby(1., -1., self.f.functions[self.subset_num].gradient(self.x_old), out=self.tmp2) 
         # Compute the output: tmp2 + full_grad
         if out is None:
             ret = 0.0 * self.tmp2
-            self.tmp2.axpby(1., 1., self.gradient_estimator, out=ret)
+            self.tmp2.sapyb(1., self.gradient_estimator, 1., out=ret)
+            # self.tmp2.axpby(1., 1., self.gradient_estimator, out=ret)
         else:
-            self.tmp2.axpby(1., 1., self.gradient_estimator, out=out)
+            self.tmp2.sapyb(1., self.gradient_estimator, 1., out=out)
+            # self.tmp2.axpby(1., 1., self.gradient_estimator, out=out)
 
         # Apply preconditioning
         if self.precond is not None:
