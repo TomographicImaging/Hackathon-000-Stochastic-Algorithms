@@ -128,12 +128,17 @@ class SubsetSumFunction(AveragedSumFunction):
         default is uniformly at random    
     '''
     
-    def __init__(self, functions, subset_select_function=(lambda a,b: int(np.random.choice(b))), subset_init=-1, **kwargs):
+    def __init__(self, functions, subset_select_function=(lambda a: int(np.random.choice(a))), replacement = False, deterministic = False, subset_init=-1, **kwargs):
         self.subset_select_function = subset_select_function
         self.subset_num = subset_init
         self.data_passes = [0]
         # should not have docstring
         super(SubsetSumFunction, self).__init__(*functions)
+        
+        self.replacement = replacement
+        if self.replacement != True:
+            # numpy array containing remaining available subsets
+            self.remaining_subsets = np.arange(self.num_subsets)
         
     @property
     def num_subsets(self):
@@ -157,8 +162,26 @@ class SubsetSumFunction(AveragedSumFunction):
 
 
     def next_subset(self):
+        ''' chooses next subset to use inreconstruction'''
+        ### needs checking! ###
+        if deterministic == True:
+            if self.subset_num != self.num_subsets:
+                self.subset_num += 1
+            else:
+                self.subset_num = 1
+        else:
+            if self.replacement != True:
+                try:
+                    self.subset_num = self.subset_select_function(self.remaining_subsets)
+                    self.remaining_subsets = self.remaining_subsets[self.remaining_subsets != self.subset_num]
+                except:
+                    # repopulate 
+                    self.remaining_subsets = np.arange(self.num_subsets)
+                    self.subset_num = self.subset_select_function(self.remaining_subsets)
+                    self.remaining_subsets = self.remaining_subsets[self.remaining_subsets != self.subset_num]
 
-        self.subset_num = self.subset_select_function(self.subset_num, self.num_subsets)
+            else:
+                self.subset_num = self.subset_select_function(self.num_subsets)
 
 
 class SAGAFunction(SubsetSumFunction):
