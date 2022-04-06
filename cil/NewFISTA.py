@@ -448,7 +448,7 @@ class KATYUSHA(Algorithm):
         #check that f is svrg and check that it's update frequency is inf
         if self.f.__class__.__name__ == 'SVRGFunction':
             if self.f.update_frequency is not np.inf:
-                raise ValueError("SVRGFunction for katyusha needs to be set up with update frequency = np.inf. Got {}".format(self.f.update_frequency))
+                raise ValueError("SVRGFunction for KATYUSHA needs to be set up with update frequency = np.inf. Got {}".format(self.f.update_frequency))
         else:
             raise ValueError("The block function f for KATYUSHA needs to be SVRGFunction. Got {}".format(self.f.__class__.__name__))
 
@@ -575,9 +575,10 @@ class SARAH(Algorithm):
 
     .. math::
 
-        \begin{cases}
-            
-        \end{cases}
+        \begin{align*}
+            g_k &= \nabla f_{i_k}(x_k) - \nabla f_{i_k} (x_{k-1}) + g_{k-1} \\
+            x_{k+1} &= x_k - \eta g_k
+        \end{align*}
 
     It is used to solve
 
