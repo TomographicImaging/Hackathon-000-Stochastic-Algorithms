@@ -520,16 +520,16 @@ class SVRGFunction(SubsetSumFunction):
             # Compute difference between current subset function gradient at current iterate (tmp1) and at snapshot, store in tmp2a
             # tmp2 = gradient F_{subset_num} (x) - gradient F_{subset_num} (snapshot)
             if self.store_subset_gradients is True:
-                self.tmp1.axpby(1., -1., self.subset_gradients[self.subset_num], out=self.tmp2)
+                self.tmp1.sapyb(1., self.subset_gradients[self.subset_num],-1.,  out=self.tmp2)
             else:
-                self.tmp1.axpby(1., -1., self.functions[self.subset_num].gradient(self.snapshot), out=self.tmp2) 
+                self.tmp1.sapyb(1., self.functions[self.subset_num].gradient(self.snapshot), -1.,  out=self.tmp2) 
 
         # Compute the output: tmp2 + full_grad
         if out is None:
             ret = 0.0 * self.tmp2
-            self.tmp2.axpby(1., 1., self.full_gradient, out=ret)
+            self.tmp2.sapyb(1., self.full_gradient, 1., out=ret)
         else:
-            self.tmp2.axpby(1., 1., self.full_gradient, out=out)
+            self.tmp2.sapyb(1.,self.full_gradient, 1.,  out=out)
 
         # Apply preconditioning
         if self.precond is not None:
@@ -666,16 +666,16 @@ class LSVRGFunction(SVRGFunction):
             # Compute difference between current subset function gradient at current iterate (tmp1) and at snapshot, store in tmp2
             # tmp2 = gradient F_{subset_num} (x) - gradient F_{subset_num} (snapshot)
             if self.store_subset_gradients is True:
-                self.tmp1.axpby(1., -1., self.subset_gradients[self.subset_num], out=self.tmp2)
+                self.tmp1.sapyb(1., self.subset_gradients[self.subset_num], -1., out=self.tmp2)
             else:
-                self.tmp1.axpby(1., -1., self.functions[self.subset_num].gradient(self.snapshot), out=self.tmp2) 
+                self.tmp1.sapyb(1., self.functions[self.subset_num].gradient(self.snapshot), -1., out=self.tmp2) 
 
         # Compute the output: tmp2 + full_grad
         if out is None:
             ret = 0.0 * self.tmp2
-            self.tmp2.axpby(1., 1., self.full_gradient, out=ret)
+            self.tmp2.sapyb(1., self.full_gradient, 1., out=ret)
         else:
-            self.tmp2.axpby(1., 1., self.full_gradient, out=out)
+            self.tmp2.sapyb(1., self.full_gradient, 1., out=out)
 
         # Apply preconditioning
         if self.precond is not None:
