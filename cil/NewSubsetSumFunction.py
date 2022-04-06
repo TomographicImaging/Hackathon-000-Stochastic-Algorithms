@@ -503,7 +503,7 @@ class SVRGFunction(SubsetSumFunction):
         self.iter += 1
 
         # In the first iteration the current iterate and snapshot will be the same, thus tmp2 = 0
-        if self.iter == 0: 
+        if self.iter == 0 and np.isinf(self.update_frequency) is False: 
             self.tmp2 = 0.0 * self.full_gradient
         # If we have completed update_frequency * num_subsets inner loop iterations, the full gradient and snapshot are updated
         elif np.isinf(self.update_frequency) == False and self.iter % (self.update_frequency * self.num_subsets) == 0: 
@@ -520,8 +520,10 @@ class SVRGFunction(SubsetSumFunction):
             # Compute difference between current subset function gradient at current iterate (tmp1) and at snapshot, store in tmp2a
             # tmp2 = gradient F_{subset_num} (x) - gradient F_{subset_num} (snapshot)
             if self.store_subset_gradients is True:
+                # use subset gradient stored in memory
                 self.tmp1.sapyb(1., self.subset_gradients[self.subset_num],-1.,  out=self.tmp2)
             else:
+                # calculate subset gradient
                 self.tmp1.sapyb(1., self.functions[self.subset_num].gradient(self.snapshot), -1.,  out=self.tmp2) 
 
         # Compute the output: tmp2 + full_grad
