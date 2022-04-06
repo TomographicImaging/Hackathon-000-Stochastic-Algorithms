@@ -8,6 +8,8 @@ from NewSubsetSumFunction import SGDFunction
 from cil.plugins.astra.operators import ProjectionOperator
 from NewFISTA import ISTA
 
+from scipy.ndimage import gaussian_filter
+
 ### TODO --- COMMENTS!! ###
 ### CIL smoothing ###
 
@@ -108,7 +110,13 @@ class WarmStart(Algorithm):
             if self.modality == 'PET':
                 smoother = pet.SeparableGaussianImageFilter()
                 smoother.set_fwhms(self.fwhms)
-                smoother.apply(self.x)            
+                smoother.apply(self.x)
+            if self.modality == 'CT':
+                if len(self.x.shape)==3:
+                    gaussian_filter(self.x.as_array(),(self.x.geometry.voxel_size_z*self.fwhms[0],
+                                    self.x.geometry.voxel_size_y*self.fwhms[1],self.x.geometry.voxel_size_x*self.fwhms[2]))
+                else:
+                    gaussian_filter(self.x.as_array(),(self.x.geometry.voxel_size_y*self.fwhms[1],self.x.geometry.voxel_size_x*self.fwhms[2]))
     
     def update(self):
         if self.modality == 'PET':
