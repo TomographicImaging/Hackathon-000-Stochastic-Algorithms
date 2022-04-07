@@ -129,12 +129,14 @@ class SubsetSumFunction(AveragedSumFunction):
     '''
     
     def __init__(self, functions, subset_select_function=(lambda a: int(np.random.choice(a))), replacement = False, deterministic = False, subset_init=-1, **kwargs):
+    
         self.subset_select_function = subset_select_function
         self.subset_num = subset_init
         self.data_passes = [0]
         # should not have docstring
         super(SubsetSumFunction, self).__init__(*functions)
         
+        self.deterministic = deterministic
         self.replacement = replacement
         if self.replacement != True:
             # numpy array containing remaining available subsets
@@ -163,23 +165,20 @@ class SubsetSumFunction(AveragedSumFunction):
 
     def next_subset(self):
         ''' chooses next subset to use inreconstruction'''
-        ### needs checking! ###
-        if deterministic == True:
+        if self.deterministic == True:
             if self.subset_num != self.num_subsets:
                 self.subset_num += 1
             else:
                 self.subset_num = 1
         else:
             if self.replacement != True:
-                try:
-                    self.subset_num = self.subset_select_function(self.remaining_subsets)
-                    self.remaining_subsets = self.remaining_subsets[self.remaining_subsets != self.subset_num]
-                except:
+                if len(self.remaining_subsets) ==0:
                     # repopulate 
                     self.remaining_subsets = np.arange(self.num_subsets)
-                    self.subset_num = self.subset_select_function(self.remaining_subsets)
-                    self.remaining_subsets = self.remaining_subsets[self.remaining_subsets != self.subset_num]
-
+                # new random subset
+                self.subset_num = self.subset_select_function(self.remaining_subsets)
+                # remove current subset from list of subset choices
+                self.remaining_subsets = self.remaining_subsets[self.remaining_subsets != self.subset_num]
             else:
                 self.subset_num = self.subset_select_function(self.num_subsets)
 
