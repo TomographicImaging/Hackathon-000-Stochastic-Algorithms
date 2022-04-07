@@ -23,7 +23,7 @@ class WarmStart(Algorithm):
     - Acquisition Model for data
     '''
     
-    def __init__(self, initial = None, acquired_data=None, acq_model=None, modality=None, step_size = None, smooth=True, fwhms = (4,4,4), num_subsets=20, num_iters = 2, use_gpu = False, precond = True, **kwargs):
+    def __init__(self, initial = None, acquired_data=None, acq_model=None, modality=None, step_size = None, smooth=True, fwhms = (4,4,4), num_subsets=32, num_iters = 1, use_gpu = False, precond = True, **kwargs):
         
         self.modality = modality
         self.step_size = step_size
@@ -55,8 +55,10 @@ class WarmStart(Algorithm):
         if self.modality is None:
             raise ValueError("Please select modality ('PET'/'CT')")
         elif self.modality == 'PET':
+            # set up PET objective function
             self.obj_fun = pet.make_Poisson_loglikelihood(self.acquired_data)
             self.obj_fun.set_acquisition_model(self.acq_model)
+            # set up OSEM reconstructor
             self.reconstructor = OSMAPOSLReconstructor()
             self.reconstructor.set_objective_function(self.obj_fun)
             self.reconstructor.set_num_subsets(self.num_subsets)
@@ -72,12 +74,14 @@ class WarmStart(Algorithm):
                 f_subsets.append(fi)
             F = BlockFunction(*f_subsets)
             self.obj_fun = SGDFunction(F)
+            # SGD reconstruction set up
             self.reconstructor = ISTA(initial=initial, f=self.obj_fun, g= IndicatorBox(0),
                         step_size=self.step_size, update_objective_interval=self.num_subsets, 
                         max_iteration=self.num_iters*self.num_subsets)
             
     
     def new_acq_model(self):
+        ''' create PET/CT acquisition model'''
         if self.modality is None:
             raise ValueError("modality ('PET'/'CT') or acquisition model must be specified")
         elif self.modality == 'PET':
@@ -102,6 +106,7 @@ class WarmStart(Algorithm):
             raise NotImplementedError()
     
     def run(self):
+        ''' run for num_iterations'''
         if self.modality == 'PET':
             self.reconstructor.reconstruct(self.x)
         elif self.modality == 'CT':
@@ -114,10 +119,11 @@ class WarmStart(Algorithm):
                 smoother.apply(self.x)
             if self.modality == 'CT':
                 if len(self.x.shape)==3:
-                    gaussian_filter(self.x.as_array(),(self.x.geometry.voxel_size_z*self.fwhms[0],
-                                    self.x.geometry.voxel_size_y*self.fwhms[1],self.x.geometry.voxel_size_x*self.fwhms[2]))
+                    self.x.fill(gaussian_filter(self.x.as_array(),(self.x.geometry.voxel_size_z*self.fwhms[0],
+                                    self.x.geometry.voxel_size_y*self.fwhms[1],self.x.geometry.voxel_size_x*self.fwhms[2])))
                 else:
-                    gaussian_filter(self.x.as_array(),(self.x.geometry.voxel_size_y*self.fwhms[1],self.x.geometry.voxel_size_x*self.fwhms[2]))
+                    self.x.fill(gaussian_filter(self.x.as_array(), (self.x.geometry.voxel_size_y*self.fwhms[1], 
+                                                self.x.geometry.voxel_size_x*self.fwhms[2])))
                     
         if self.precond == True:
             self.create_preconditioner()
@@ -131,18 +137,26 @@ class WarmStart(Algorithm):
         update_objective
     
     def update_objectvie(self):
-        ''' update objective after single sub-iteration '''
+        ''' update objective value list'''
         if self.modality == 'PET':
             objective.append(self.reconstructor.get_current_objective())
     
     def create_preconditioner(self):
+        ''' create BSREM primal and dual preconditioners'''
         if self.modality == 'PET':
-            sens_tmp = self.acq_model.adjoint(self.x)
+            sens_tmp = self.acq_model.adjoint(self.acquired_data)
+            est_data = self.acq_model.direct(self.x)
+            one_sino = est_data.get_uniform_copy(1.)
         elif self.modality == 'CT':
             A = ProjectionOperator(self.x.geometry, self.acquired_data.geometry, device = self.device)
             sens_tmp = A.adjoint(self.acquired_data)
+            est_data = A.direct(self.x)
+            one_sino = self.acquired_data.geometry.allocate(1.)
             
-        self.precond = self.x.divide(sens_tmp)
+        # primal preconditioner
+        self.precond_x = self.x.divide(sens_tmp)
+        #dual preconditioner https://arxiv.org/pdf/2201.05497.pdf
+        self.precond_y = one_sino.subtract(self.acquired_data.divide(est_data))
             
         
             
