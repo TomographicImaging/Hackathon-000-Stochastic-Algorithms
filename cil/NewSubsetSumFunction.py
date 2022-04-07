@@ -128,7 +128,7 @@ class SubsetSumFunction(AveragedSumFunction):
         default is uniformly at random    
     '''
     
-    def __init__(self, functions, subset_select_function=(lambda a: int(np.random.choice(a))), replacement = False, deterministic = False, subset_init=-1, **kwargs):
+    def __init__(self, functions, subset_select_function=(lambda a: int(np.random.choice(a))), replacement = False, deterministic = False, order = 0, subset_init=-1, **kwargs):
     
         self.subset_select_function = subset_select_function
         self.subset_num = subset_init
@@ -136,7 +136,9 @@ class SubsetSumFunction(AveragedSumFunction):
         # should not have docstring
         super(SubsetSumFunction, self).__init__(*functions)
         
+        
         self.deterministic = deterministic
+        self.order = order
         self.replacement = replacement
         if self.replacement != True:
             # numpy array containing remaining available subsets
@@ -166,10 +168,18 @@ class SubsetSumFunction(AveragedSumFunction):
     def next_subset(self):
         ''' chooses next subset to use inreconstruction'''
         if self.deterministic == True:
-            if self.subset_num != self.num_subsets:
-                self.subset_num += 1
+            if self.order != "orthogonal":
+                # cycle through subsets in number-order
+                if self.subset_num != self.num_subsets:
+                    # iterate through subsets
+                    self.subset_num += 1
+                else:
+                    # return to start of subsets
+                    self.subset_num = 1
             else:
-                self.subset_num = 1
+                #cycle through subsets in orthogonal order - needs implementing
+                self.num_angles = len(self.acquired_data.geometry.angles)
+                
         else:
             if self.replacement != True:
                 if len(self.remaining_subsets) ==0:
