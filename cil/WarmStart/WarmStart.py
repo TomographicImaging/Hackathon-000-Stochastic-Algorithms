@@ -23,7 +23,7 @@ class WarmStart(Algorithm):
     - Acquisition Model for data
     '''
     
-    def __init__(self, initial = None, acquired_data=None, acq_model=None, modality=None, step_size = None, smooth=True, fwhms = (4,4,4), num_subsets=2, num_iters = 10, use_gpu = False, **kwargs):
+    def __init__(self, initial = None, acquired_data=None, acq_model=None, modality=None, step_size = None, smooth=True, fwhms = (4,4,4), num_subsets=20, num_iters = 2, use_gpu = False, precond = True, **kwargs):
         
         self.modality = modality
         self.step_size = step_size
@@ -31,6 +31,7 @@ class WarmStart(Algorithm):
         self.num_iters = num_iters
         self.smooth = smooth
         self.fwhms = fwhms
+        self.precond = precond
         
         if use_gpu == True:
             self.device = 'gpu'
@@ -38,7 +39,7 @@ class WarmStart(Algorithm):
             self.device = 'cpu'
         
         if acquired_data is not None and initial is not None:
-            set_up(acquired_data, acq_model, initial)
+            self.set_up(acquired_data, acq_model, initial)
     
     def set_up(self, acquired_data, acq_model, initial):
         self.acquired_data = acquired_data
@@ -81,7 +82,7 @@ class WarmStart(Algorithm):
             raise ValueError("modality ('PET'/'CT') or acquisition model must be specified")
         elif self.modality == 'PET':
             if self.device == 'gpu':
-                self.acq_model = pet.AcquisitionModelUsingParallelProj()
+                self.acq_model = pet.AcquisitionModelUsingParallelproj()
             else:
                 self.acq_model = pet.AcquisitionModelUsingRayTracingMatrix()
             self.acq_model.set_up(self.acquired_data)
@@ -117,8 +118,12 @@ class WarmStart(Algorithm):
                                     self.x.geometry.voxel_size_y*self.fwhms[1],self.x.geometry.voxel_size_x*self.fwhms[2]))
                 else:
                     gaussian_filter(self.x.as_array(),(self.x.geometry.voxel_size_y*self.fwhms[1],self.x.geometry.voxel_size_x*self.fwhms[2]))
+                    
+        if self.precond == True:
+            self.create_preconditioner()
     
     def update(self):
+        ''' single subiteration - PET only'''
         if self.modality == 'PET':
             self.reconstructor.update()
         elif self.modality == 'CT':
@@ -126,8 +131,20 @@ class WarmStart(Algorithm):
         update_objective
     
     def update_objectvie(self):
+        ''' update objective after single sub-iteration '''
         if self.modality == 'PET':
-            return self.reconstructor.get_current_objective()
+            objective.append(self.reconstructor.get_current_objective())
+    
+    def create_preconditioner(self):
+        if self.modality == 'PET':
+            sens_tmp = self.acq_model.adjoint(self.x)
+        elif self.modality == 'CT':
+            A = ProjectionOperator(self.x.geometry, self.acquired_data.geometry, device = self.device)
+            sens_tmp = A.adjoint(self.acquired_data)
+            
+        self.precond = self.x.divide(sens_tmp)
+            
+        
             
     
             
