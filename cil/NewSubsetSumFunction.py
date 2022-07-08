@@ -19,7 +19,7 @@ class AveragedSumFunction(Function):
 
     
     
-    def __init__(self, *functions ):
+    def __init__(self, *functions):
                 
         super(AveragedSumFunction, self).__init__()        
         if len(functions) < 2:
@@ -400,7 +400,7 @@ class SAGFunction(SAGAFunction):
     '''
     def __init__(self, functions, precond=None, gradient_initialisation_point=None, **kwargs):
         
-        super(SAGFunction, self).__init__(functions)
+        super(SAGFunction, self).__init__(functions, precond=precond, gradient_initialisation_point=gradient_initialisation_point)
 
     def gradient(self, x, out=None):
         """
@@ -519,7 +519,7 @@ class SVRGFunction(SubsetSumFunction):
         to converge if the functions f_i are convex and the step-size 
         gamma satisfies
             gamma <= 1/(4 * max L_i (P + 2))
-        where the gradient of each f_i is L_i - Lipschitz, and P is the number of inner iterations, that is, update_frequency * num_sebsets
+        where the gradient of each f_i is L_i - Lipschitz, and P is the number of inner iterations, that is, update_frequency * num_subsets
 
         Reference:
         Johnson, Rie; Zhang, Tong. 
@@ -641,7 +641,7 @@ class LSVRGFunction(SVRGFunction):
 
     def __init__(self, functions, precond=None, update_frequency = 2, **kwargs):
 
-        super(LSVRGFunction, self).__init__(functions, precond=None, update_frequency = 2, **kwargs)
+        super(LSVRGFunction, self).__init__(functions, precond=precond, update_frequency = update_frequency)
 
         # Define the probability threshold for updating the full gradient and the snapshot
         self.probability_threshold = 1.0/(self.update_frequency*self.num_subsets)
